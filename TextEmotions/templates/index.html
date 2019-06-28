@@ -1,0 +1,117 @@
+
+<!DOCTYPE HTML>
+
+	Author: Ronak Pai
+
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
+
+			<script type="text/javascript">
+				//Variable for whether the button is clickable
+				var clickable = true;
+				window.onload = function() {
+				// setup the button click
+					document.getElementById("submit").onclick = function() {
+						//If clicked, change the text on the page
+						document.getElementById("header").innerText = "Working...";
+						document.getElementById("info").innerText = "This will probably take some time.";
+						document.getElementById("submit").innerText = "Working";
+						//If clicked, send the data
+						if(clickable){
+							clickable = false;
+							doWork()
+						}
+					};
+				}
+				//Send the data using AJAX to python
+				function doWork() {
+					//Send the inputted values as the data
+					//Upon success or error, switch to the results page
+					$.ajax({
+					  type: "POST",
+					  url: "http://127.0.0.1:5000/recieve",
+					  data: JSON.stringify([document.getElementById("term").value]),
+					  /*
+					  success: function(){
+					            window.location.href = "http://127.0.0.1:5000/results";
+					        },
+					    error: function(){
+					    	window.location.href = "http://127.0.0.1:5000/results";
+					    },
+					    */
+					  dataType: "JSON"
+					});
+					// stop link reloading the page
+				 event.preventDefault();
+				 //Wait for response from server
+				}
+			</script>
+
+			<script>
+			$(document).ready(function(){
+			  // Add smooth scrolling to all links
+			  $("a").on('click', function(event) {
+
+			    // Make sure this.hash has a value before overriding default behavior
+			    if (this.hash !== "") {
+			      // Prevent default anchor click behavior
+			      event.preventDefault();
+
+			      // Store hash
+			      var hash = this.hash;
+
+			      // Using jQuery's animate() method to add smooth page scroll
+			      // The optional number (800) specifies the number of milliseconds it takes to scroll to the specified area
+			      $('html, body').animate({
+			        scrollTop: $(hash).offset().top
+			      }, 800, function(){
+
+			        // Add hash (#) to URL when done scrolling (default click behavior)
+			        window.location.hash = hash;
+			      });
+			    } // End if
+			  });
+			});
+			</script>
+
+<html>
+	<head>
+		<title>Backlink Scraper</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<!--[if lte IE 8]><script src="assets/js/ie/html5shiv.js"></script><![endif]-->
+		<link rel="stylesheet" href=" {{ url_for('static',filename='assets/css/main.css') }}" />
+		<!--[if lte IE 9]><link rel="stylesheet" href="assets/css/ie9.css" /><![endif]-->
+	</head>
+
+	<body>
+
+		<!-- Banner -->
+			<section id="banner">
+				<h2><strong>Speech Analyzer</strong> to find out your speech's tone</h2>
+				<p>Try it out now!</p>
+				<ul class="actions">
+					<li><a href="#two" class="button special">Get started</a></li>
+				</ul>
+			</section>
+
+		<!-- Two -->
+			<section id="two" class="wrapper style2 special">
+				<div class="inner narrow">
+					<header>
+						<h2 id = "header">Enter in your data</h2>
+					</header>
+					<p id = "info">Enter in your text</p>
+					<form class="grid-form" method="post" action="#">
+						<input name="term" id="term" type="text" style="height:420px; width:600px;" align="center">
+						<ul class="actions">
+							<li><a class="button special" id = "submit"  >Get Results</a></li>
+						</ul>
+					</form>
+				</div>
+			</section>
+
+
+		<!-- Scripts -->
+
+	</body>
+</html>
