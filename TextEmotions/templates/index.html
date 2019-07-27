@@ -1,7 +1,7 @@
 
 <!DOCTYPE HTML>
 
-	Author: Ronak Pai
+<!--	Author: Ronak Pai -->
 
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
 
@@ -12,16 +12,22 @@
 				// setup the button click
 					document.getElementById("submit").onclick = function() {
 						//If clicked, change the text on the page
-						document.getElementById("header").innerText = "Working...";
-						document.getElementById("info").innerText = "This will probably take some time.";
-						document.getElementById("submit").innerText = "Working";
+						document.getElementById("header").innerText = "Recording...";
+						document.getElementById("submit").innerText = "Stop Recording";
 						//If clicked, send the data
+						if(!clickable){
+							endWork();
+							document.getElementById("header").innerText = "Recorded Message";
+							document.getElementById("submit").innerText = "Scroll down for results";
+						}
 						if(clickable){
 							clickable = false;
-							doWork()
+							doWork();
+
 						}
 					};
 				}
+
 				//Send the data using AJAX to python
 				function doWork() {
 					//Send the inputted values as the data
@@ -32,17 +38,59 @@
 					  data: JSON.stringify([document.getElementById("term").value]),
 					  /*
 					  success: function(){
-					            window.location.href = "http://127.0.0.1:5000/results";
 					        },
 					    error: function(){
-					    	window.location.href = "http://127.0.0.1:5000/results";
 					    },
 					    */
 					  dataType: "JSON"
 					});
-					// stop link reloading the page
+
+					$.ajax({
+					  url: '/audio',
+        			  success: function(data) {
+        			  	document.getElementById("info").innerHTML = data;
+        			  	updateResults();
+        			  	getEmotions();
+        			  }
+
+					});
 				 event.preventDefault();
 				 //Wait for response from server
+				}
+
+				function endWork() {
+					$.getJSON('/close',
+						function(data) {
+					});
+				}
+
+				function updateResults(){
+					$.ajax({
+					  url: '/result',
+        			  success: function(data) {
+        			  	document.getElementById("grade").innerHTML = "Grade: " + data;
+        			  }
+
+					});
+				}
+
+				function getEmotions(){
+					$.ajax({
+						  url: '/emotion',
+						  dataType: "JSON",
+						  success: function(data) {
+							document.getElementById("emotions").innerHTML = "Emotion Analysis:";
+							for(sentence in data){
+								var para = document.createElement("h4");
+								var node = document.createTextNode(data[sentence]);
+								para.appendChild(node);
+
+								var element = document.getElementById("result");
+								element.appendChild(para);
+							}
+						  }
+
+						});
 				}
 			</script>
 
@@ -75,7 +123,7 @@
 
 <html>
 	<head>
-		<title>Backlink Scraper</title>
+		<title>Speech Analyzer</title>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<!--[if lte IE 8]><script src="assets/js/ie/html5shiv.js"></script><![endif]-->
@@ -87,8 +135,8 @@
 
 		<!-- Banner -->
 			<section id="banner">
-				<h2><strong>Speech Analyzer</strong> to find out your speech's tone</h2>
-				<p>Try it out now!</p>
+				<h2><strong>Speech Analyzer</strong> to practice speaking</h2>
+				<p>Gives you the clarity and emotions of your speech</p>
 				<ul class="actions">
 					<li><a href="#two" class="button special">Get started</a></li>
 				</ul>
@@ -102,14 +150,23 @@
 					</header>
 					<p id = "info">Enter in your text</p>
 					<form class="grid-form" method="post" action="#">
-						<input name="term" id="term" type="text" style="height:420px; width:600px;" align="center">
+						<textarea name="term" id="term" type="text" style="height:420px; width:600px;" align="center"></textarea>
 						<ul class="actions">
-							<li><a class="button special" id = "submit"  >Get Results</a></li>
+							<li><a class="button special" id = "submit"  >Record</a></li>
 						</ul>
 					</form>
 				</div>
 			</section>
-
+		<!-- Results -->
+			<section id = "results" class = "wrapper style3 special">
+				<div class="inner narrow" id = "result">
+					<header>
+						<h2 id = "head">Results</h2>
+					</header>
+					<h3 id = "grade">Nothing has been recorded</h3>
+					<h2 id = "emotions">N/A</h2>
+				</div>
+			</section>
 
 		<!-- Scripts -->
 

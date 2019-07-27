@@ -1,47 +1,47 @@
-'''
-from flask import Flask, render_template, request, redirect, Response
-import pyaudio
+#!/usr/bin/env python
 
+# Copyright 2019 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-app = Flask(__name__)
+"""Google Cloud Speech API sample application using the streaming API.
+NOTE: This module requires the dependencies `pyaudio` and `termcolor`.
+To install using pip:
+    pip install pyaudio
+    pip install termcolor
+Example usage:
+    python transcribe_streaming_infinite.py
+"""
 
+# [START speech_transcribe_infinite_streaming]
 
-@app.route('/')
-def start():
-    return render_template("index.html")
-
-
-@app.route('/recieve', methods = ['POST', 'GET'])
-def getText():
-    data = request.get_json(force=True)
-    text = str(data[0])
-    print(text)
-    render_template("index.html")
-    return "success"
-
-
-#Run the app!
-if __name__ == "__main__":
-    app.run(debug = False)
-'''
-
-from flask import Flask, render_template, request, redirect, Response
-import pyaudio
 import time
-from six.moves import queue
+import re
+import sys
+
+# uses result_end_time currently only avaialble in v1p1beta, will be in v1 soon
 from google.cloud import speech_v1p1beta1 as speech
-import stringdist
-import string
-from ibm_watson import ToneAnalyzerV3
-import json
+import pyaudio
+from six.moves import queue
 
-
-app = Flask(__name__)
-
-text = ""
-final_transcript = ""
-
+# Audio recording parameters
 STREAMING_LIMIT = 10000
+SAMPLE_RATE = 16000
+CHUNK_SIZE = int(SAMPLE_RATE / 10)  # 100ms
+
+RED = '\033[0;31m'
+GREEN = '\033[0;32m'
+YELLOW = '\033[0;33m'
 
 
 def get_current_time():
@@ -157,10 +157,6 @@ class ResumableMicrophoneStream:
 
             yield b''.join(data)
 
-sampleRate = 16000
-CHUNK = int(sampleRate / 10)  # 100ms
-stream = ResumableMicrophoneStream(sampleRate, CHUNK)
-
 
 def listen_print_loop(responses, stream):
     """Iterates through server responses and prints them.
@@ -174,6 +170,7 @@ def listen_print_loop(responses, stream):
     the next result to overwrite it, until the response is a final one. For the
     final one, print a newline to preserve the finalized transcription.
     """
+
     for response in responses:
 
         if get_current_time() - stream.start_time > STREAMING_LIMIT:
@@ -208,51 +205,68 @@ def listen_print_loop(responses, stream):
         # line, so subsequent lines will overwrite them.
 
         if result.is_final:
-            return transcript
+
+            sys.stdout.write(GREEN)
+            sys.stdout.write('\033[K')
+            sys.stdout.write(str(corrected_time) + ': ' + transcript + '\n')
+
             stream.is_final_end_time = stream.result_end_time
             stream.last_transcript_was_final = True
 
+            # Exit recognition if any of the transcribed phrases could be
+            # one of our keywords.
+            if re.search(r'\b(exit|quit)\b', transcript, re.I):
+                sys.stdout.write(YELLOW)
+                sys.stdout.write('Exiting...\n')
+                stream.closed = True
+                break
+
         else:
+            sys.stdout.write(RED)
+            sys.stdout.write('\033[K')
+            sys.stdout.write(str(corrected_time) + ': ' + transcript + '\r')
+
             stream.last_transcript_was_final = False
 
 
-@app.route('/audio', methods = ['POST', 'GET'])
-def audio():
-    global final_transcript
-    def sound():
-        results = ""
-        lastTranscript = ""
+def main():
+    """start bidirectional streaming from microphone input to speech API"""
 
-        stream.__enter__()
+    client = speech.SpeechClient()
+    config = speech.types.RecognitionConfig(
+        encoding=speech.enums.RecognitionConfig.AudioEncoding.LINEAR16,
+        sample_rate_hertz=SAMPLE_RATE,
+        language_code='en-US',
+        max_alternatives=1)
+    streaming_config = speech.types.StreamingRecognitionConfig(
+        config=config,
+        interim_results=True)
 
-        client = speech.SpeechClient()
-        config = speech.types.RecognitionConfig(
-            encoding=speech.enums.RecognitionConfig.AudioEncoding.LINEAR16,
-            sample_rate_hertz=sampleRate,
-            language_code='en-US',
-            max_alternatives=1)
-        streaming_config = speech.types.StreamingRecognitionConfig(
-            config=config,
-            interim_results=True)
+    mic_manager = ResumableMicrophoneStream(SAMPLE_RATE, CHUNK_SIZE)
+    print(mic_manager.chunk_size)
+    sys.stdout.write(YELLOW)
+    sys.stdout.write('\nListening, say "Quit" or "Exit" to stop.\n\n')
+    sys.stdout.write('End (ms)       Transcript Results/Status\n')
+    sys.stdout.write('=====================================================\n')
 
-        print("recording...")
+    with mic_manager as stream:
 
-        t_end = time.time() + 5
         while not stream.closed:
+            sys.stdout.write(YELLOW)
+            sys.stdout.write('\n' + str(
+                STREAMING_LIMIT * stream.restart_counter) + ': NEW REQUEST\n')
+
             stream.audio_input = []
             audio_generator = stream.generator()
 
             requests = (speech.types.StreamingRecognizeRequest(
-                audio_content=content) for content in audio_generator)
+                audio_content=content)for content in audio_generator)
 
             responses = client.streaming_recognize(streaming_config,
                                                    requests)
 
             # Now, put the transcription responses to use.
-            transcript = listen_print_loop(responses, stream)
-            if transcript != None and transcript != lastTranscript:
-                lastTranscript = transcript
-                results += transcript
+            listen_print_loop(responses, stream)
 
             if stream.result_end_time > 0:
                 stream.final_request_end_time = stream.is_final_end_time
@@ -262,77 +276,13 @@ def audio():
             stream.audio_input = []
             stream.restart_counter = stream.restart_counter + 1
 
+            if not stream.last_transcript_was_final:
+                sys.stdout.write('\n')
             stream.new_stream = True
-        print(results)
-        return results
-    final_transcript = sound()
-    return final_transcript
 
 
-@app.route('/recieve', methods = ['POST', 'GET'])
-def getText():
-    global text
-    data = request.get_json(force=True)
-    text = str(data[0])
-    print(text)
-    return "success"
+if __name__ == '__main__':
 
+    main()
 
-@app.route('/close', methods = ['POST', 'GET'])
-def close():
-    stream.closed = True
-    return "success"
-
-
-@app.route('/result', methods = ['POST', 'GET'])
-def result():
-    global text
-    global final_transcript
-    data = []
-    text = text.lower()
-    final_transcript = final_transcript.lower()
-    text = text.translate(str.maketrans('', '', string.punctuation))
-    final_transcript = final_transcript.translate(str.maketrans('', '', string.punctuation))
-    grade = str(int((1 - stringdist.rdlevenshtein_norm(text, final_transcript))*100)) + "%"
-    print(grade)
-    return grade
-
-
-@app.route('/emotion', methods = ['POST', 'GET'])
-def emotions():
-    global text
-    emotion = []
-    tone_analyzer = ToneAnalyzerV3(
-        version='2017-09-21',
-        iam_apikey='Iw1X1i5s-OK_c5RRmmWBVGRQyDwoqmtQ-NXvbQVBAcs7',
-        url='https://gateway.watsonplatform.net/tone-analyzer/api'
-    )
-    tone_analysis = tone_analyzer.tone(
-        {'text': text},
-        content_type='application/json'
-    ).get_result()
-
-    print(tone_analysis)
-    document = "Overall speech tone: " + str(int(tone_analysis["document_tone"]["tones"][0]["score"]*100)) + "% "
-    document += tone_analysis["document_tone"]["tones"][0]["tone_name"]
-    emotion.append(document)
-
-    if "sentences_tone" in tone_analysis:
-        for sentence in tone_analysis["sentences_tone"]:
-            detect = sentence["text"] + ": "
-            if len(sentence["tones"]) > 0:
-                detect += str(int(sentence["tones"][0]["score"]*100)) + "% "
-                detect += sentence["tones"][0]["tone_name"]
-            else:
-                detect += "No emotion detected"
-            emotion.append(detect)
-    return json.dumps(emotion)
-
-
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-
-if __name__ == "__main__":
-    app.run(host='0.0.0.0', debug=True, threaded=True, port=5000)
+# [END speech_transcribe_infinite_streaming]
